@@ -3,13 +3,20 @@ terraform {
 
   required_providers {
     /*
-      API provisioning support for Proxmox
+      API provisioning support for Proxmox.
+
+      WARNING: As of September 2023 this is a non-released version (build from source).
+      Put the built binary into the following path (or equivalent if using another platform):
+          \environment\sample-container\terraform.d\plugins\registry.terraform.io\telmate\proxmox\2.9.15\windows_amd64\terraform-provider-proxmox_v2.9.15.exe
+
+      The prerelease v2.9.15 has bug fixes for disks with null filenames and cloud-init support.
+
       see
         - https://registry.terraform.io/providers/Telmate/proxmox/latest
     */
     proxmox = {
       source  = "telmate/proxmox"
-      version = "2.9.14"
+      version = "2.9.15"
     }
 
     /*
@@ -36,7 +43,7 @@ terraform {
         - https://registry.terraform.io/providers/hashicorp/null
     */
     null = {
-      source = "hashicorp/null"
+      source  = "hashicorp/null"
       version = "3.2.1"
     }
   }
@@ -45,9 +52,6 @@ terraform {
 provider "proxmox" {
   pm_api_url      = var.pm_api_url
   pm_tls_insecure = var.pm_tls_insecure
-
-  pm_user             = var.pm_user
-  pm_password         = var.pm_password
-  pm_api_token_id     = var.pm_api_token_id
-  pm_api_token_secret = var.pm_api_token_secret
+  pm_user         = var.pm_user
+  pm_password     = var.pm_password
 }

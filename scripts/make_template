@@ -64,7 +64,7 @@ qm create ${VM_ID} \
     --ostype l26 \
     --scsihw virtio-scsi-single \
     --boot order=scsi0 \
-    --hookscript ${DATASTORE}:snippets/description-to-ignition \
+    --hookscript ${DATASTORE}:snippets/cloudinit-to-ignition \
     --efidisk0 "file=${DATASTORE}:0,import-from=$(readlink -e ${VARS_IMAGE}),format=raw,efitype=4m,pre-enrolled-keys=1" \
     --scsi0 "file=${DATASTORE}:0,import-from=$(readlink -e ${OS_IMAGE}),format=qcow2" \
     --description "Flatcar Template with Ignition configuration" \

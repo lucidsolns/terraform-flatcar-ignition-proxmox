@@ -22,12 +22,3 @@ variable "pm_password" {
   default     = ""
 }
 
-variable "pm_api_token_id" {
-  default = "root@pam!terraform"
-}
-
-variable "pm_api_token_secret" {
-  description = "Provide an API secret in a *.auto.tfvars file (or via some other mechanism)"
-  default     = ""
-  sensitive   = true
-}

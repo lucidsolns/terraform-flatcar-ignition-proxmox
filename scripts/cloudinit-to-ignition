@@ -1,0 +1,83 @@
+#!/bin/bash
+#
+# A script to transition an ignition configuration inside a cloud-init ISO
+# to a file that is deployed as part of a VM configuration
+#
+# This is part of a workaround for Proxmox until ignition support is a first class feature.
+#
+# see:
+# - /usr/share/pve-docs/examples/guest-example-hookscript.pl
+#
+set -eu
+
+# URL decode a string.
+# see:
+#  - https://stackoverflow.com/a/37840948
+function urldecode() { : "${*//+/ }"; echo -e "${_//%/\\x}"; }
+
+function configure()
+{
+        local VM_ID=$1
+
+        # Get the VM Proxmox config for the VM
+        local VM_CONFIG="$(qm config ${VM_ID})"
+
+        # Get the description which is URL encoded (it is the comment in the raw configuration file)
+        local DESCRIPTION=$( printf "%s" "${VM_CONFIG}" | sed -ne 's/^description: \(.*\)/\1/gp' )
+
+        # Decode the URL encoded VM description
+        local DECODED_DESCRIPTION=$( urldecode "${DESCRIPTION}" )
+
+        # Pull out the reference to the cloud-init storage. It is a string of the form " cloud-init: <storage path>"
+        local ISO_STORAGE_PATH=$(printf "%s" "${DECODED_DESCRIPTION}" | sed -ne 's/^\s*cloud-init:\s*\([^\n]*\)/\1/gp' )
+
+        # Convert the cloud-init storage path to a filesystem path
+        local ISO_FILESYSTEM_PATH=$( pvesm path "${ISO_STORAGE_PATH}" )
+
+        # Make a temporary directory and mount the cloud-init ISO
+        local TEMP_MOUNT=$( mktemp --directory --tmpdir cloud-init.XXXXX )
+        mount -o loop -o ro "${ISO_FILESYSTEM_PATH}" "${TEMP_MOUNT}"
+
+        # Copy the ignition file stored as 'meta-data' to the PVE filesystem. This file
+        # will be referenced via the fw_cfg option.
+        mkdir -p /etc/pve/local/ignition
+        cp "${TEMP_MOUNT}/meta-data" "/etc/pve/local/ignition/${VM_ID}.ign"
+
+        # Cleanup
+        umount "${TEMP_MOUNT}"
+        rmdir "${TEMP_MOUNT}"
+
+        # TODO: add error checking - mega-happy path prototype code above
+        if [ -n "${DESCRIPTION}" ] ; then
+
+                # Check the fw_cfg argument is set (and points to the ignition configuration written above)
+                local FW_CFG=$( printf "%s" "${VM_CONFIG}" | sed -ne 's/^args: .*\(-fw_cfg name=opt\/org.flatcar-linux\/config,file=[^\\ ]*\)/\1/gp' )
+                if [ -n "$FW_CFG" ] ; then
+                        return # fw_cfg set correctly
+                else
+                        echo "Error: The VM configuration must have Qemu arguments of -fw_cfg name=opt/org.flatcar-linux/config,file=/etc/pve/local/ignition/${VM_ID}.ign"
+                        exit 5
+                fi
+
+                exit 0
+        else
+                echo "Cloud init ISO is not referenced in the VM description"
+                exit 0
+        fi
+}
+
+
+
+PHASE=$2
+if [ "${PHASE}" = 'pre-start' ]; then
+        configure $1
+elif [ "${PHASE}" = 'post-start' ]; then
+        exit 0
+elif [ "${PHASE}" = 'pre-stop' ]; then
+        exit 0
+elif [ "${PHASE}" = 'post-stop' ]; then
+        exit 0
+else
+        echo "Invalid hook script phase ${PHASE}"
+        exit 1
+fi

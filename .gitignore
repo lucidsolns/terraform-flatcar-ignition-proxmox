@@ -1,5 +1,5 @@
 # Don't put any local credentials into git
-credentials.auto.tfvars
+*.auto.tfvars
 
 # Default ignored files
 /shelf/
@@ -32,6 +32,8 @@ credentials.auto.tfvars
 # Directories
 # Local .terraform directories
 **/.terraform/*
+# local providers
+**/terraform.d/*
 .vagrant/
 
 # Compiled files

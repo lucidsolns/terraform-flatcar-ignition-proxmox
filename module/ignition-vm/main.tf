@@ -11,7 +11,7 @@
     - https://github.com/flatcar/ignition
     - https://www.qemu.org/docs/master/specs/fw_cfg.html
 */
-resource "proxmox_vm_qemu" "test_server" {
+resource "proxmox_vm_qemu" "example_flatcar_ignition_vm" {
   count       = var.vm_count # just want 1 for now, set to 0 and apply to destroy VM
   vmid        = var.vm_count > 1 ? var.vm_id + count.index : var.vm_id
   name        = var.vm_count > 1 ? "${var.name}-${count.index + 1}" : var.name
@@ -35,10 +35,16 @@ resource "proxmox_vm_qemu" "test_server" {
    This is documented in the Qemu documentation in the 'blockdev drive -file' section.
 
    Setting this args parameter when creating a VM requires local root access
-   with password authentication.
+   with password authentication. The ignition file is created in the `/etc/pve/...`
+   directory by the helper hook script.
  */
   args = "-fw_cfg name=opt/org.flatcar-linux/config,file=/etc/pve/local/ignition/${var.vm_count > 1 ? var.vm_id + count.index : var.vm_id}.ign"
-  desc = "data:application/vnd.coreos.ignition+json;charset=UTF-8;base64,${base64encode(data.ct_config.ignition_json[count.index].rendered)}"
+  desc = <<EOT
+      A flatcar VM provisioned with Terraform from template ${var.template_name} on ${timestamp()}
+
+      cloud-init: ${proxmox_cloud_init_disk.ignition_cloud_init[count.index].id}
+  EOT
+
 
   # The qemu agent must be running in the flatcar instance so that Proxmox can
   # identify when the VM is up (see https://github.com/flatcar/Flatcar/issues/737)
@@ -50,7 +56,13 @@ resource "proxmox_vm_qemu" "test_server" {
     default = "120s"
   }
 
-  define_connection_info = false # ssh connection info is defined in the ignition configuration
+  # The connection info is obtained via the guest agent once the VM is
+  # up and running. This requires the ignition configuration to 'work' and the
+  # agent to be running. This will provide feedback that the VM is operational.
+  #
+  # If this fails, the following error is produced:
+  #      Warning: define_connection_info is %t, no further action.
+  define_connection_info = true
 
   #
   bios = "ovmf" # UEFI boot
@@ -67,18 +79,39 @@ resource "proxmox_vm_qemu" "test_server" {
   onboot  = true
   scsihw  = "virtio-scsi-single"
 
-  # if you want two NICs, just copy this whole network section and duplicate it
-  network {
-    model  = "virtio"
-    bridge = var.network_bridge
-    tag    = var.network_tag
+  // Support an array of virtio network adapters.
+  dynamic "network" {
+    for_each = var.networks
+    content {
+      model  = "virtio"
+      bridge = lookup(network.value, "bridge", "vmbr0")
+      tag    = lookup(network.value, "tag", null)
+      mtu    = lookup(network.value, "mtu", null)
+    }
+  }
+
+  // Support a list of optional disks (in addition to those inherited from the cloned
+  // template). Getting these expressed so they don't conflict with disks inherited
+  // from the template can be problematic (use slots).
+  dynamic "disk" {
+    for_each = var.disks
+    content {
+      type    = lookup(disk.value, "type", "virtio")
+      storage = lookup(disk.value, "storage", null)
+      size    = lookup(disk.value, "size", null)
+      slot    = lookup(disk.value, "slot", null)
+      volume  = lookup(disk.value, "volume", null)
+      file    = lookup(disk.value, "file", null)
+      format  = lookup(disk.value, "format", null)
+    }
   }
 
   lifecycle {
     prevent_destroy       = false # this resource should be immutable **and** disposable
     create_before_destroy = false
     ignore_changes        = [
-      disk # the disk is provisioned in the template and inherited (but not defined here]
+      disk, # the disk is provisioned in the template and inherited (but not defined here]
+      desc # the description on the first start, then the user can change it in the UI
     ]
     replace_triggered_by = [
       null_resource.node_replace_trigger[count.index].id
@@ -116,6 +149,29 @@ data "ct_config" "ignition_json" {
       "vm_count_index" = count.index,
     })
   ]
+}
+
+/*
+  Create a cloudinit ISO with the ignition configuration as the `meta data` file.
+
+  This is a blatant hack/hijack of the meta-data as the ignition file is not
+  a cloud-init configuration. The ISO will not be attached to the VM and will have
+  a lifeycle that is independent of the VM (i.e. if the VM is deleted, then a manual
+  deletion of the cloud-init ISO will be required).
+
+  The ignition configuration is put into the ISO as plain text (it can be formatted/pretty
+  or in a canonical form). No escaping, or base64 encoding is performed.
+
+  see:
+    - https://registry.terraform.io/providers/Telmate/proxmox/latest/docs/guides/cloud_init
+*/
+resource "proxmox_cloud_init_disk" "ignition_cloud_init" {
+  count    = var.vm_count # just want 1 for now, set to 0 and apply to destroy VM
+  name     = var.vm_count > 1 ? "${var.name}-${count.index + 1}" : var.name
+  pve_node = var.target_node
+  storage  = "local"
+
+  meta_data = data.ct_config.ignition_json[count.index].rendered
 }
 
 /**
