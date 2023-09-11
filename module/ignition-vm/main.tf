@@ -138,7 +138,7 @@ data "ct_config" "ignition_json" {
     "vm_count"       = var.vm_count,
     "vm_count_index" = count.index,
   })
-  strict       = false
+  strict       = true
   pretty_print = true
 
   snippets = [
@@ -178,7 +178,7 @@ resource "proxmox_cloud_init_disk" "ignition_cloud_init" {
     A null resource to track changes, so that the immutable VM is recreated
  */
 resource "null_resource" "node_replace_trigger" {
-  count   = var.vm_count
+  count    = var.vm_count
   # Changes to any instance of the cluster requires re-provisioning
   triggers = {
     "ignition" = "${data.ct_config.ignition_json[count.index].rendered}"
