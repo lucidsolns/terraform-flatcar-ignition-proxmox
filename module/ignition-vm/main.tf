@@ -45,6 +45,24 @@ resource "proxmox_vm_qemu" "example_flatcar_ignition_vm" {
       cloud-init: ${proxmox_cloud_init_disk.ignition_cloud_init[count.index].id}
   EOT
 
+  /*
+    Enable serial port support. Where the guest provides serial console
+    support (which flatcar does out of the box), diagnostics around booting
+    and crashing is vastly simplified.
+
+   Use the following command to access the serial port/terminal:
+       qm terminal <vm_id>
+
+    This should create QEMU equivalent option:
+        -serial unix:/var/run/qemu-server/101.serial,server,nowait
+
+   see:
+      - https://pve.proxmox.com/wiki/Serial_Terminal
+  */
+  serial {
+    id   = 0
+    type = "socket"
+  }
 
   # The qemu agent must be running in the flatcar instance so that Proxmox can
   # identify when the VM is up (see https://github.com/flatcar/Flatcar/issues/737)
