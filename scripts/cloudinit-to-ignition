@@ -1,16 +1,46 @@
 #!/bin/bash
 #
-# A script to transition an ignition configuration inside a cloud-init ISO
-# to a file that is deployed as part of a VM configuration
+# A script to transition an ignition configuration file from a
+# cloud-init configuration. This is a hack that overcomes the
+# limitation that butane/ignition files do not have first class
+# support in Proxmox.
 #
-# This is part of a workaround for Proxmox until ignition support is a first class feature.
+# The strategy of using a cloud-init allows any size ignition
+# configuration to be placed into a cloud-init configuration
+# via the API. It is important that the strategy allows both
+# a large document to be set and that it can be automated via
+# the Proxmox API to allow the provisioning of cattle. Because
+# there are no practical size limitations with this approach
+# the ignition configuration can be left in a human readable
+# form with whitespace/newlines.
 #
-# see:
+# Conditions that must be met outside this script:
+#   1. This script must be called from the Proxmox VM 'hookscript'
+#   2. An ISO must be written (by Terraform - see proxmox_cloud_init_disk)
+#   3. the name of the ISO image must be included in the 'description' field
+#      of the VM configuration
+#   4. the 'args' parameter of the VM configuration must set the `fw_cfg`
+#
+# This script will perform the following steps:
+#   1. copy the 'meta-data' file from the cloud-init ISO image
+#      that is named in the 'description'
+#   2. ensure that the VM configuration references the ignition file
+#
+# This script generates the ignition files in cluster PVE filesystem with the form:
+#    /etc/pve/local/ignition/${VM_ID}.ign
+# This means that the files should be available across a cluster.
+#
+# Note: The cloud-init ISO is not associated with a specific VM. This
+# means the coordinating script (terraform) can choose to reuse the
+# cloud-init for many cattle, or have a ISO file per instance of the VM.
+#
+# see
 # - /usr/share/pve-docs/examples/guest-example-hookscript.pl
 #
 set -eu
 
 # URL decode a string.
+#
 # see:
 #  - https://stackoverflow.com/a/37840948
 function urldecode() { : "${*//+/ }"; echo -e "${_//%/\\x}"; }
@@ -29,26 +59,19 @@ function configure()
         local DECODED_DESCRIPTION=$( urldecode "${DESCRIPTION}" )
 
         # Pull out the reference to the cloud-init storage. It is a string of the form " cloud-init: <storage path>"
-        local ISO_STORAGE_PATH=$(printf "%s" "${DECODED_DESCRIPTION}" | sed -ne 's/^\s*cloud-init:\s*\([^\n]*\)/\1/gp' )
+        local ISO_STORAGE_PATH=$( printf "%s" "${DECODED_DESCRIPTION}" | sed -ne 's/^\s*cloud-init:\s*\([^\n]*\)/\1/gp' )
 
         # Convert the cloud-init storage path to a filesystem path
         local ISO_FILESYSTEM_PATH=$( pvesm path "${ISO_STORAGE_PATH}" )
 
-        # Make a temporary directory and mount the cloud-init ISO
-        local TEMP_MOUNT=$( mktemp --directory --tmpdir cloud-init.XXXXX )
-        mount -o loop -o ro "${ISO_FILESYSTEM_PATH}" "${TEMP_MOUNT}"
-
-        # Copy the ignition file stored as 'meta-data' to the PVE filesystem. This file
-        # will be referenced via the fw_cfg option.
-        mkdir -p /etc/pve/local/ignition
-        cp "${TEMP_MOUNT}/meta-data" "/etc/pve/local/ignition/${VM_ID}.ign"
-
-        # Cleanup
-        umount "${TEMP_MOUNT}"
-        rmdir "${TEMP_MOUNT}"
-
-        # TODO: add error checking - mega-happy path prototype code above
-        if [ -n "${DESCRIPTION}" ] ; then
+        if [ -n "${ISO_FILESYSTEM_PATH}" ] ; then
+                # Make a temporary directory and mount the cloud-init ISO
+                local TEMP_MOUNT=$( mktemp --directory --tmpdir cloud-init.XXXXX )
+                mount -o loop -o ro "${ISO_FILESYSTEM_PATH}" "${TEMP_MOUNT}"
+                mkdir -p /etc/pve/local/ignition
+                cp "${TEMP_MOUNT}/meta-data" "/etc/pve/local/ignition/${VM_ID}.ign"
+                umount "${TEMP_MOUNT}"
+                rmdir "${TEMP_MOUNT}"
 
                 # Check the fw_cfg argument is set (and points to the ignition configuration written above)
                 local FW_CFG=$( printf "%s" "${VM_CONFIG}" | sed -ne 's/^args: .*\(-fw_cfg name=opt\/org.flatcar-linux\/config,file=[^\\ ]*\)/\1/gp' )
@@ -66,8 +89,6 @@ function configure()
         fi
 }
 
-
-
 PHASE=$2
 if [ "${PHASE}" = 'pre-start' ]; then
         configure $1
@@ -78,6 +99,6 @@ elif [ "${PHASE}" = 'pre-stop' ]; then
 elif [ "${PHASE}" = 'post-stop' ]; then
         exit 0
 else
-        echo "Invalid hook script phase ${PHASE}"
+        echo "Unknown hook script phase ${PHASE}"
         exit 1
 fi
