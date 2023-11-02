@@ -42,6 +42,7 @@ resource "proxmox_vm_qemu" "example_flatcar_ignition_vm" {
   desc = <<EOT
       A flatcar VM provisioned with Terraform from template ${var.template_name} on ${timestamp()}
 
+      hook-script: local:snippets/multi-hookscript.pl
       cloud-init: ${proxmox_cloud_init_disk.ignition_cloud_init[count.index].id}
   EOT
 
