@@ -58,8 +58,10 @@ function configure()
     # Decode the URL encoded VM description
     local DECODED_DESCRIPTION=$( urldecode "${DESCRIPTION}" )
 
-    # Pull out the reference to the cloud-init storage. It is a string of the form " cloud-init: <storage path>"
-    local ISO_STORAGE_PATH=$( printf "%s" "${DECODED_DESCRIPTION}" | sed -ne 's/^\s*cloud-init:\s*\([^\n]*\)/\1/gp' )
+    # Pull out the reference to the cloud-init storage. It is a string of
+    # the form "cloud-init: <storage path>". Some of the tools are putting
+    # DOS style CR/LF characters into the description.
+    local ISO_STORAGE_PATH=$( printf "%s" "${DECODED_DESCRIPTION}" | tr -s '\r' '\n' | sed -ne 's/^\s*cloud-init:\s*\(.*\)$/\1/gp' )
 
     if [ -n "${ISO_STORAGE_PATH}" ] ; then
         # Convert the cloud-init storage path to a filesystem path
