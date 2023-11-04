@@ -39,10 +39,10 @@ resource "proxmox_vm_qemu" "example_flatcar_ignition_vm" {
    directory by the helper hook script.
  */
   args = "-fw_cfg name=opt/org.flatcar-linux/config,file=/etc/pve/local/ignition/${var.vm_count > 1 ? var.vm_id + count.index : var.vm_id}.ign"
-  desc = <<EOT
+  desc = <<-EOT
       A flatcar VM provisioned with Terraform from template ${var.template_name} on ${timestamp()}
 
-      hook-script: local:snippets/multi-hookscript.pl
+      hook-script: local:snippets/cloudinit-to-ignition
       cloud-init: ${proxmox_cloud_init_disk.ignition_cloud_init[count.index].id}
   EOT
 
