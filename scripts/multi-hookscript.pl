@@ -33,7 +33,7 @@ my $conf = PVE::QemuConfig->load_config($vmid);
 # decoded with PVE::Tools::decode_text(). This field is limited to 8kb.
 my $description = $conf->{description};
 
-while ($description =~ /^\s*hook-script:\s*([^\n]*)$/gm) {
+while ($description =~ /^\s*hook-script:\s*([^\r\n]*)$/gm) {
     my $hookscript = $1;
 
     eval {
