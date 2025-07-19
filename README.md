@@ -1,3 +1,5 @@
+**Deprecated**: I've moved to using the bpg/proxmox provider as in this [example](https://github.com/lucidsolns/tf-proxmox-cacti-cyan).
+
 # A sample Proxmox Terraform Flatcar provisioning script
 
 This repository has a script to provision Flatcar VM images using
