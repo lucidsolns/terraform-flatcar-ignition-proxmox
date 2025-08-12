@@ -1,4 +1,4 @@
-**Deprecated**: I've moved to using the bpg/proxmox provider as in this [example](https://github.com/lucidsolns/tf-proxmox-cacti-cyan).
+**Deprecated**: I've moved to using the bpg/proxmox provider in this [module](https://github.com/lucidsolns/terraform-proxmox-flatcar-vm) as in this [example](https://github.com/lucidsolns/tf-proxmox-cacti-cyan).
 
 # A sample Proxmox Terraform Flatcar provisioning script
 
